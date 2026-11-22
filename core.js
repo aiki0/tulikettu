@@ -345,7 +345,7 @@ export async function fetchClouds(f) {
     + `latitude=${pts.map(p => p.lat).join(',')}&longitude=${pts.map(p => p.lon).join(',')}`
     + '&hourly=cloud_cover,temperature_2m,wind_speed_10m'
     + '&models=metno_seamless&timeformat=unixtime&forecast_days=4&past_hours=3&wind_speed_unit=ms';
-  const arr = await getJSON(url, f);
+  const arr = await getJSON(url, f).catch(() => new Promise(r => setTimeout(r, 3000)).then(() => getJSON(url, f)));
   const list = Array.isArray(arr) ? arr : [arr];
   const out = {};
   list.forEach((loc, i) => {

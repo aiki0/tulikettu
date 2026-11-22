@@ -189,6 +189,11 @@ async function main() {
   ]);
   if (data.cmes) state.cmeCache = { t: +now, list: data.cmes };
   else if (state.cmeCache) data.cmes = state.cmeCache.list.map(c => ({ ...c, arrival: new Date(c.arrival), launched: c.launched && new Date(c.launched), modelled: new Date(c.modelled) }));
+  // Cloud forecast changes slowly: if Open-Meteo hiccups, reuse the last one for up to 3 h.
+  if (data.clouds) state.cloudCache = { t: +now, clouds: data.clouds };
+  else if (state.cloudCache && now - state.cloudCache.t < 3 * HOUR) {
+    data.clouds = Object.fromEntries(Object.entries(state.cloudCache.clouds).map(([k, v]) => [k, v.map(r => ({ ...r, t: new Date(r.t) }))]));
+  }
   if (Object.keys(data.errors).length) console.warn('fetch errors:', data.errors);
   const msgs = decide(data, state, now, { forceDaily: flag('--force-daily') });
 
