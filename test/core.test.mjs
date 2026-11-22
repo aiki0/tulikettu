@@ -52,3 +52,16 @@ test('alert parser understands a NOAA watch', () => {
     assert.deepEqual(list[0].days.map(d => d.level), ['G2', 'G1', 'None']);
   });
 });
+
+test('detects a CME shock at L1 and estimates Earth arrival', () => {
+  const now = new Date('2026-11-25T20:00:00Z');
+  const wind = Array.from({ length: 60 }, (_, i) => {
+    const t = new Date(now.getTime() - (59 - i) * 60e3);
+    return i < 45 ? { t, v: 380, n: 4 } : { t, v: 620, n: 22 };
+  });
+  const s = C.detectShock(wind, now);
+  assert.ok(s, 'shock found');
+  const mins = (s.arrival - s.t) / 60e3;
+  assert.ok(mins > 35 && mins < 45, `lead ${mins}`);
+  assert.equal(C.detectShock(wind.map(p => ({ ...p, v: 380, n: 4 })), now), null);
+});

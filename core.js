@@ -452,6 +452,10 @@ export function nowcast(data, now = new Date()) {
     let n = 0; for (let i = wind.mag.length - 1; i >= 0 && wind.mag[i].bz < -3; i--) n++; return n;
   })();
 
+  // L1 (1.5 million km sunward): solar wind measured there reaches Earth after ~1.5e6/v seconds.
+  const leadMin = speed ? Math.round(1.5e6 / speed / 60) : null;
+  const shock = detectShock(wind?.wind, now);
+
   const ov = data.ovation;
   const ovAct = ov ? clamp(ov.north / 45) : null;
   const kpAct = kpToActivity(kpNow) * timeOfNightFactor(now, kpNow);
@@ -475,11 +479,36 @@ export function nowcast(data, now = new Date()) {
   const score = Math.round(100 * visible * (0.75 + 0.25 * mf));
   return {
     t: now, kpNow, source, fmi: fmiFresh ? fmi : null, magNT, magStation: muo?.name, magFresh: !!fresh, range15: muo?.range15 ?? null,
-    bz, bzNow, speed, density, southMinutes, coupling, loading,
+    bz, bzNow, speed, density, southMinutes, leadMin, shock, coupling, loading,
     ovHere: ov?.here ?? null, ovNorth: ov?.north ?? null,
     act, soon, clear: cl, dark, sunAlt: sun.alt, moonAlt: moon.alt, moonAz: moon.az, moonFrac: mi.fraction, moonPhase: mi.phase, mf,
     score, label: scoreLabel(score, dark),
   };
+}
+
+/**
+ * CME shock / sudden solar wind jump at L1: speed up ≥ 60 km/s and density ×1.8 (or ≥ 15 /cm³)
+ * within ~10 min, seen in the last 90 min. Returns arrival estimate at Earth.
+ */
+export function detectShock(wind, now = new Date()) {
+  if (!wind?.length) return null;
+  const recent = wind.filter(p => now - p.t < 90 * 60e3);
+  for (let i = recent.length - 1; i >= 0; i--) {
+    const p = recent[i];
+    const before = wind.filter(q => p.t - q.t >= 8 * 60e3 && p.t - q.t <= 20 * 60e3);
+    if (before.length < 3) continue;
+    const v0 = before.reduce((s, q) => s + q.v, 0) / before.length;
+    const n0 = before.reduce((s, q) => s + q.n, 0) / before.length;
+    const after = recent.filter(q => q.t >= p.t && q.t - p.t <= 5 * 60e3);
+    if (after.length < 2) continue;
+    const v1 = after.reduce((s, q) => s + q.v, 0) / after.length;
+    const n1 = after.reduce((s, q) => s + q.n, 0) / after.length;
+    if (v1 - v0 >= 60 && (n1 >= 1.8 * n0 || n1 >= 15)) {
+      const arrival = new Date(p.t.getTime() + 1.5e6 / v1 * 1000);
+      return { t: p.t, v0: Math.round(v0), v1: Math.round(v1), n0: +n0.toFixed(1), n1: +n1.toFixed(1), arrival };
+    }
+  }
+  return null;
 }
 
 export function scoreLabel(score, dark = 1) {
@@ -593,6 +622,14 @@ export function certainty(data, nc, nightsList, now = new Date()) {
     out.push({
       level: 'soon', title: 'Purkaus todennäköinen pian',
       text: `Aurinkotuulen magneettikenttä on ollut etelään (Bz ${nc.bz.toFixed(1)} nT) ${nc.southMinutes} min nopeudella ${Math.round(nc.speed)} km/s. Energiaa kertyy – revontulten purkaus on todennäköinen 20–60 minuutin sisällä.`,
+    });
+  }
+  if (nc.shock) {
+    const mins = Math.round((nc.shock.arrival - now) / 60e3);
+    out.push({
+      level: 'shock', id: 'shock:' + nc.shock.t.toISOString(),
+      title: mins > 0 ? `Aurinkomyrskyn shokki L1:llä – osuu Maahan ~${mins} min päästä` : 'Aurinkomyrskyn shokki osui juuri Maahan',
+      text: `SOLAR-1-satelliitti L1-pisteessä mittasi äkillisen hypyn: nopeus ${nc.shock.v0}→${nc.shock.v1} km/s, tiheys ${nc.shock.n0}→${nc.shock.n1} /cm³ (klo ${hhmm(nc.shock.t)}). Arvioitu osuma klo ${hhmm(nc.shock.arrival)}. Jos Bz kääntyy etelään, revontulet voivat räjähtää koko taivaalle.`,
     });
   }
   const tonight = nightsList[0];

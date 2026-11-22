@@ -122,6 +122,13 @@ async function main() {
     msgs.push({ key: 'soon', priority: 4, tags: ['fox_face', 'hourglass'], title: '🦊 ' + soon.title, message: soon.text });
   }
 
+  // 2b) CME shock detected at L1 → Earth impact within ~30–60 min (once per shock)
+  const shock = certain.find(c => c.level === 'shock');
+  if (shock && !state.seen[shock.id]) {
+    state.seen[shock.id] = +now;
+    msgs.push({ key: null, priority: 5, tags: ['sun_with_face', 'rotating_light'], title: '☀️ ' + shock.title, message: shock.text });
+  }
+
   // 3) Good conditions by forecast even without live confirmation
   if (!live && !soon && nc.score >= 50 && nc.dark > 0.6 && since('good') > 2.5 * HOUR && since('live') > HOUR) {
     msgs.push({

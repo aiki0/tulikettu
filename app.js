@@ -92,7 +92,7 @@ function renderHero(nc) {
 }
 
 function renderCertain(list) {
-  const icon = { live: '✨', 'live-cloudy': '☁️', soon: '⏳', storm: '⚡', cme: '☀️' };
+  const icon = { shock: '🚨', live: '✨', 'live-cloudy': '☁️', soon: '⏳', storm: '⚡', cme: '☀️' };
   $('#certain').innerHTML = list.map(c => `<div class="banner ${c.level}" data-icon="${icon[c.level] || '✨'}"><h3>${esc(c.title)}</h3><p>${esc(c.text)}</p></div>`).join('');
 }
 
@@ -220,10 +220,10 @@ function renderSpace(data, nc) {
   const m = data.wind?.mag?.slice(-120), w = data.wind?.wind?.slice(-120);
   const bzMin = m?.length ? Math.min(-6, ...m.map(p => p.bz)) : -6, bzMax = m?.length ? Math.max(6, ...m.map(p => p.bz)) : 6;
   const cells = [
-    `<div class="metric"><div class="k">Bz (2 h)</div><div class="v">${nc.bzNow != null ? (nc.bzNow > 0 ? '+' : '') + nc.bzNow.toFixed(1) : '–'}<small>nT</small></div>
+    `<div class="metric"><div class="k">Bz (2 h) · L1</div><div class="v">${nc.bzNow != null ? (nc.bzNow > 0 ? '+' : '') + nc.bzNow.toFixed(1) : '–'}<small>nT</small></div>
       <div class="h">${nc.bz == null ? '' : nc.bz < -3 ? 'Etelään – energiaa kertyy ⚡' : nc.bz < 0 ? 'Lievästi etelään' : 'Pohjoiseen – rauhallista'}</div>${spark(m, 'bz', { min: bzMin, max: bzMax, zero: 0 })}</div>`,
     `<div class="metric"><div class="k">Aurinkotuuli</div><div class="v">${nc.speed ? Math.round(nc.speed) : '–'}<small>km/s</small></div>
-      <div class="h">${nc.density != null ? `tiheys ${nc.density.toFixed(1)} /cm³` : ''}</div>${spark(w, 'v')}</div>`,
+      <div class="h">${nc.density != null ? `tiheys ${nc.density.toFixed(1)} /cm³` : ''}${nc.leadMin ? ` · osuu Maahan ~${nc.leadMin} min` : ''}</div>${spark(w, 'v')}</div>`,
     `<div class="metric"><div class="k">Kp nyt</div><div class="v">${nc.kpNow.toFixed(1)}</div><div class="h">NOAA, arvio 1 min välein</div></div>`,
     `<div class="metric"><div class="k">OVATION</div><div class="v">${nc.ovNorth ?? '–'}<small>%</small></div><div class="h">revontulitodennäköisyys pohjoisessa ~30–90 min päähän</div></div>`,
   ];
@@ -321,7 +321,7 @@ function render() {
   renderTips(nc, tonight);
   const errs = Object.keys(data.errors);
   $('#updated').textContent = `päivitetty ${C.hhmm(data.fetched)}` + (errs.length ? ` · ${errs.length} lähde ei vastannut` : '');
-  localNotify(an.certain.filter(c => ['live', 'soon', 'storm', 'cme'].includes(c.level)));
+  localNotify(an.certain.filter(c => ['shock', 'live', 'soon', 'storm', 'cme'].includes(c.level)));
 }
 
 async function load() {

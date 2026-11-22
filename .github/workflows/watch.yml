@@ -34,7 +34,7 @@ jobs:
           key: state-${{ github.run_id }}
           restore-keys: state-
       - name: Test
-        run: node --test test/
+        run: node --test test/*.test.mjs
       - name: Watch
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
