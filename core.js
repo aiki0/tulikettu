@@ -362,14 +362,14 @@ export async function fetchClouds(f) {
 /** Fetch everything; individual failures become null so the app degrades gracefully. */
 export async function fetchAll(f = fetch, { nasaKey, fmiSnapshot, skip = [] } = {}) {
   const jobs = {
-    fmi: fetchFmiR(f, fmiSnapshot),
-    kp: fetchKpForecast(f), kpNow: fetchKpNow(f), wind: fetchSolarWind(f), ovation: fetchOvation(f),
-    alerts: fetchAlerts(f), outlook: fetch27Day(f), cmes: fetchCMEs(f, nasaKey), mag: fetchMagnetometer(f),
-    clouds: fetchClouds(f),
+    fmi: () => fetchFmiR(f, fmiSnapshot),
+    kp: () => fetchKpForecast(f), kpNow: () => fetchKpNow(f), wind: () => fetchSolarWind(f), ovation: () => fetchOvation(f),
+    alerts: () => fetchAlerts(f), outlook: () => fetch27Day(f), cmes: () => fetchCMEs(f, nasaKey), mag: () => fetchMagnetometer(f),
+    clouds: () => fetchClouds(f),
   };
   for (const k of skip) delete jobs[k];
   const keys = Object.keys(jobs);
-  const res = await Promise.allSettled(Object.values(jobs));
+  const res = await Promise.allSettled(Object.values(jobs).map(fn => fn()));
   const data = { fetched: new Date(), errors: {} };
   res.forEach((r, i) => {
     data[keys[i]] = r.status === 'fulfilled' ? r.value : null;
@@ -628,8 +628,11 @@ export function nights(rows) {
     const maxKp = Math.max(...darkHrs.map(h => h.kp));
     const avgClear = darkHrs.filter(h => h.clear != null);
     const darkStart = darkAll[0].t, darkEnd = new Date(darkHrs[darkHrs.length - 1].t.getTime() + 3600e3);
-    // Any-time-of-night chance: 1 − Π(1 − p_h) with heavy correlation → use a softened combination.
-    const pNight = 1 - darkHrs.reduce((acc, h) => acc * (1 - h.prob / 100) ** 0.35, 1);
+    // Any-time-of-night chance: hours are strongly correlated (same weather, same geomagnetic state),
+    // so combine them with a heavily softened 1 − Π(1 − p). Uses the moon-weighted score: a bright
+    // moon hides faint aurora. Calibrated so a clear, quiet (Kp ~2) night lands near FMI's
+    // "seen on ~3 of 4 clear dark nights in Lapland".
+    const pNight = 1 - darkHrs.reduce((acc, h) => acc * (1 - h.score / 100) ** 0.2, 1);
     res.push({
       date: new Date(key), hours: hrs, peak, from: hrs[a].t, to: new Date(hrs[b].t.getTime() + 3600e3),
       maxKp, darkStart, darkEnd, weatherKnown: darkHrs.some(h => h.weatherKnown),
