@@ -38,6 +38,7 @@ Nimi tulee kansantarusta: tulikettu juoksee tuntureilla ja lakaisee hännällä�
 ```sh
 node --test test/
 node watcher.mjs --dry --force-daily --site .   # tulostaa ilmoitukset, kirjoittaa fmi.json
+node simulate.mjs                               # simuloi myrskyillan ilmoitukset
 python3 -m http.server 4321                     # avaa http://localhost:4321
 ```
 Secrets (GitHub): `NTFY_TOPIC` (pakollinen), `NASA_KEY` (valinnainen, api.nasa.gov). `APP_URL` (secret, linkki ilmoituksista).

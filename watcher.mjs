@@ -69,24 +69,13 @@ export function nightSummary(n, nc, isTonight) {
   return lines.join('\n');
 }
 
-async function main() {
-  const now = new Date();
-  const state = await loadState();
+/** Pure decision step: which notifications to send for this data, updating `state`. */
+export function decide(data, state, now = new Date(), { forceDaily = false, log = true } = {}) {
   state.sent ||= {}; state.seen ||= {};
   const since = k => now - (state.sent[k] || 0);
-
-  // NASA's DEMO_KEY is rate limited per IP, so CMEs are fetched at most hourly and cached in state.
-  const cmeFresh = state.cmeCache && now - state.cmeCache.t < HOUR;
-  const [data] = await Promise.all([
-    C.fetchAll(fetch, { nasaKey: process.env.NASA_KEY || 'DEMO_KEY', skip: cmeFresh ? ['cmes'] : [] }),
-    writeSnapshot(),
-  ]);
-  if (data.cmes) state.cmeCache = { t: +now, list: data.cmes };
-  else if (state.cmeCache) data.cmes = state.cmeCache.list.map(c => ({ ...c, arrival: new Date(c.arrival), launched: c.launched && new Date(c.launched), modelled: new Date(c.modelled) }));
-  if (Object.keys(data.errors).length) console.warn('fetch errors:', data.errors);
   const { nc, nights, certain, escape } = C.analyse(data, now);
   const L = C.local(now);
-  console.log(`[${C.hhmm(now)}] score ${nc.score} (${nc.label}) act ${pct(nc.act)} clear ${pct(nc.clear)} dark ${nc.dark.toFixed(2)} src ${nc.source}`
+  if (log) console.log(`[${C.hhmm(now)}] score ${nc.score} (${nc.label}) act ${pct(nc.act)} clear ${pct(nc.clear)} dark ${nc.dark.toFixed(2)} src ${nc.source}`
     + (nc.fmi ? ` R ${nc.fmi.R}/${nc.fmi.lower}/${nc.fmi.higher}` : '') + ` Bz ${nc.bz?.toFixed(1)} v ${nc.speed}`);
 
   const msgs = [];
@@ -97,9 +86,11 @@ async function main() {
   if (live) {
     const escalated = live.strong && !state.lastLiveStrong;
     if (since('live') > 75 * MIN || escalated) {
+      // A repeat within the same show is a gentle "still going" reminder, not another alarm.
+      const repeat = !escalated && since('live') < 4 * HOUR;
       msgs.push({
-        key: 'live', priority: live.strong ? 5 : 4, tags: ['fox_face', 'sparkles'],
-        title: live.strong ? '🦊 Revontulet NYT – lähes varmasti!' : '🦊 Revontulia todennäköisesti nyt',
+        key: 'live', priority: repeat ? 3 : live.strong ? 5 : 4, tags: ['fox_face', 'sparkles'],
+        title: repeat ? `🦊 Revontulet jatkuvat${live.strong ? ' voimakkaina' : ''}` : live.strong ? '🦊 Revontulet NYT – lähes varmasti!' : '🦊 Revontulia todennäköisesti nyt',
         message: `${live.text}\nTaivas ${pct(nc.clear)} selkeä · Kuu ${Math.round(nc.moonFrac * 100)} % ${nc.moonAlt > 0 ? `korkeudella ${Math.round(nc.moonAlt)}°` : 'laskenut'}.`,
       });
     }
@@ -169,7 +160,7 @@ async function main() {
 
   // 6) Daily briefing at 15–16 local (it's dark from ~15:30 in late November)
   const today = `${L.y}-${L.mo}-${L.d}`;
-  if ((L.h >= 15 && state.daily !== today) || flag('--force-daily')) {
+  if ((L.h >= 15 && state.daily !== today) || forceDaily) {
     state.daily = today;
     const n = nights.find(x => now < x.darkEnd) || nights[0];
     const next = nights.filter(x => x !== n && x.date > n.date).slice(0, 2);
@@ -182,12 +173,28 @@ async function main() {
     });
   }
 
-  for (const m of msgs) {
-    await push(m);
-    if (m.key) state.sent[m.key] = +now;
-  }
+  for (const m of msgs) if (m.key) state.sent[m.key] = +now;
+  return msgs;
+}
+
+async function main() {
+  const now = new Date();
+  const state = await loadState();
+
+  // NASA's DEMO_KEY is rate limited per IP, so CMEs are fetched at most hourly and cached in state.
+  const cmeFresh = state.cmeCache && now - state.cmeCache.t < HOUR;
+  const [data] = await Promise.all([
+    C.fetchAll(fetch, { nasaKey: process.env.NASA_KEY || 'DEMO_KEY', skip: cmeFresh ? ['cmes'] : [] }),
+    writeSnapshot(),
+  ]);
+  if (data.cmes) state.cmeCache = { t: +now, list: data.cmes };
+  else if (state.cmeCache) data.cmes = state.cmeCache.list.map(c => ({ ...c, arrival: new Date(c.arrival), launched: c.launched && new Date(c.launched), modelled: new Date(c.modelled) }));
+  if (Object.keys(data.errors).length) console.warn('fetch errors:', data.errors);
+  const msgs = decide(data, state, now, { forceDaily: flag('--force-daily') });
+
+  for (const m of msgs) await push(m);
   if (!msgs.length) console.log('no notifications');
   if (!DRY) await saveState(state);
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+if (import.meta.url === new URL(`file://${process.argv[1]}`).href) main().catch(e => { console.error(e); process.exit(1); });
