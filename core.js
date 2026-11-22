@@ -517,10 +517,15 @@ export function detectShock(wind, now = new Date()) {
   return null;
 }
 
-/** Uncertainty window of a modelled CME arrival: glancing blows are fuzzier. */
+/**
+ * Uncertainty window of a modelled CME arrival. Glancing blows are fuzzier, and slow CMEs
+ * (< 500 km/s) tend to arrive later than WSA-Enlil predicts, so the window leans late.
+ */
 export function cmeWindow(c) {
-  const half = (c.glancing ? 12 : 8) * 3600e3;
-  return { from: new Date(c.arrival.getTime() - half), to: new Date(c.arrival.getTime() + half) };
+  const H = 3600e3;
+  const slow = c.speed != null && c.speed < 500;
+  const before = (c.glancing ? 10 : 7) * H, after = (c.glancing ? 18 : 10) * H + (slow ? 4 * H : 0);
+  return { from: new Date(c.arrival.getTime() - before), to: new Date(c.arrival.getTime() + after) };
 }
 export function activeCme(cmes, now = new Date()) {
   return (cmes || []).find(c => { const w = cmeWindow(c); return now >= w.from && now <= w.to; }) || null;
@@ -699,7 +704,7 @@ export function certainty(data, nc, nightsList, now = new Date()) {
     if (cmeWindow(c).to < now || c === nc.cme) continue;
     out.push({
       level: 'cme', title: `Koronan massapurkaus osuu Maahan ${dayLabel(c.arrival)} n. klo ${hhmm(c.arrival)}`,
-      text: `NASA:n WSA-Enlil-malli: ${c.glancing ? 'sivuosuma' : 'suora osuma'}${c.kpHigh != null ? `, Kp-ennuste ${c.kpLow === c.kpHigh ? c.kpHigh : c.kpLow + '–' + c.kpHigh}` : ''}. Saapumisikkuna ${hhmm(cmeWindow(c).from)}–${hhmm(cmeWindow(c).to)} (${c.glancing ? '±12 h, sivuosuma' : '±8 h'}).`,
+      text: `NASA:n WSA-Enlil-malli: ${c.glancing ? 'sivuosuma' : 'suora osuma'}${c.kpHigh != null ? `, Kp-ennuste ${c.kpLow === c.kpHigh ? c.kpHigh : c.kpLow + '–' + c.kpHigh}` : ''}. Saapumisikkuna ${hhmm(cmeWindow(c).from)}–${hhmm(cmeWindow(c).to)} (${c.glancing ? 'sivuosuma, epävarma' : 'tyypillinen virhe ±7 h'}).`,
     });
   }
   if (tonight && tonight.maxKp >= 5 && (tonight.meanClear ?? 0) >= 0.5) {
