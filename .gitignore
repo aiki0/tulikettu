@@ -1,0 +1,4 @@
+.state/
+_site/
+fmi.json
+.DS_Store

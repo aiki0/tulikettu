@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Tulikettu · Revontulet Ylläsjärvi</title>
+  <meta name="description" content="Revontulivahti Ylläsjärvelle: aktiivisuus nyt, yön parhaat hetket, aurinkomyrskyt ja pilvipako.">
+  <meta name="theme-color" content="#050a14">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Tulikettu">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="sky" aria-hidden="true"></canvas>
+  <div id="stars" aria-hidden="true"></div>
+
+  <main>
+    <header class="top">
+      <div class="brand"><span class="fox">🦊</span> Tulikettu</div>
+      <button id="refresh" class="ghost" aria-label="Päivitä"><span id="updated">ladataan…</span> ⟳</button>
+    </header>
+
+    <section class="hero" id="hero">
+      <div class="gauge">
+        <svg viewBox="0 0 200 200" aria-hidden="true">
+          <defs>
+            <linearGradient id="g-ring" x1="0" y1="1" x2="1" y2="0">
+              <stop offset="0" stop-color="#22f5a0"/><stop offset=".55" stop-color="#3be3ff"/><stop offset="1" stop-color="#c06bff"/>
+            </linearGradient>
+          </defs>
+          <circle cx="100" cy="100" r="84" class="ring-bg"/>
+          <circle cx="100" cy="100" r="84" class="ring" id="ring" stroke="url(#g-ring)"/>
+        </svg>
+        <div class="gauge-text">
+          <div class="score" id="score">–</div>
+          <div class="score-sub">/ 100</div>
+        </div>
+      </div>
+      <div class="hero-label" id="label">Haetaan avaruussäätä…</div>
+      <div class="hero-place">Ylläsjärvi · <span id="clock"></span></div>
+      <div class="chips" id="chips"></div>
+    </section>
+
+    <div id="certain"></div>
+
+    <section class="card" id="tonight">
+      <h2>Tänä yönä</h2>
+      <p class="lead" id="tonight-lead"></p>
+      <div class="chart-wrap"><svg id="chart" viewBox="0 0 360 190" preserveAspectRatio="none"></svg></div>
+      <div class="legend">
+        <span><i class="lg-bar"></i>Tulikettu-indeksi</span><span><i class="lg-cloud"></i>Pilvet</span><span><i class="lg-moon"></i>Kuu taivaalla</span><span><i class="lg-dark"></i>Hämärä</span>
+      </div>
+      <div class="hour-detail" id="hour-detail">Napauta tuntia nähdäksesi tarkemmin.</div>
+      <div class="timeline" id="sun-moon"></div>
+    </section>
+
+    <section class="card">
+      <h2>Seuraavat yöt</h2>
+      <div class="nights" id="nights"></div>
+      <h3>Pidempi näkymä <small>NOAA 27 vrk</small></h3>
+      <div class="outlook" id="outlook"></div>
+    </section>
+
+    <section class="card" id="storms">
+      <h2>Aurinkomyrskyt</h2>
+      <div id="storm-list"></div>
+    </section>
+
+    <section class="card">
+      <h2>Avaruussää nyt</h2>
+      <div class="grid2" id="space"></div>
+      <h3>Ilmatieteen laitoksen magnetometrit <small>R-indeksi</small></h3>
+      <div id="stations"></div>
+    </section>
+
+    <section class="card">
+      <h2>Pilvipako</h2>
+      <p class="lead small">Missä taivas on selkein juuri nyt ja yön parhaaseen aikaan.</p>
+      <div id="escape"></div>
+    </section>
+
+    <section class="card">
+      <h2>Kuvausvinkit</h2>
+      <dl class="tips" id="tips"></dl>
+    </section>
+
+    <section class="card" id="notify-card">
+      <h2>Ilmoitukset</h2>
+      <div id="notify"></div>
+    </section>
+
+    <footer>
+      <details>
+        <summary>Miten ennuste lasketaan?</summary>
+        <p><b>Tulikettu-indeksi</b> = aktiivisuus × selkeys × pimeys, kuun kirkkaudella painotettuna.</p>
+        <p><b>Aktiivisuus nyt</b>: Ilmatieteen laitoksen Muonion R-indeksi (päivittyy 5 min välein, asemakohtaiset rajat kohtalaiselle ja suurelle todennäköisyydelle), NOAA:n OVATION-nowcast ja Kp. Aurinkotuulen etelään kääntynyt Bz nostaa lähituntien ennustetta.</p>
+        <p><b>Tulevat tunnit</b>: NOAA:n 3 vrk Kp-ennuste, joka painotetaan magneettisen keskiyön (~23.30) ympärille. Ylläs on revontulivyöhykkeen alla: jo Kp 1–2 riittää usein.</p>
+        <p><b>Pilvet</b>: MET Nordic (Open-Meteo), 2,5 km hila, kauempana ECMWF. <b>Kuu ja aurinko</b> lasketaan suoraan laitteessa.</p>
+        <p><b>Aurinkomyrskyt</b>: NOAA SWPC:n varoitukset ja NASA DONKI:n WSA-Enlil-mallin CME-osumat.</p>
+        <p class="src">Lähteet: Ilmatieteen laitos (CC BY 4.0), NOAA SWPC, NASA CCMC/DONKI, Open-Meteo / MET Norway.</p>
+      </details>
+    </footer>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

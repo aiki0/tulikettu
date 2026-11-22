@@ -1,0 +1,57 @@
+name: watch
+# Every 10 min: check aurora conditions, push ntfy notifications, publish the web app + FMI snapshot to Pages.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Restore watcher state
+        uses: actions/cache/restore@v4
+        with:
+          path: .state
+          key: state-${{ github.run_id }}
+          restore-keys: state-
+      - name: Test
+        run: node --test test/
+      - name: Watch
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NASA_KEY: ${{ secrets.NASA_KEY }}
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          mkdir -p _site
+          node watcher.mjs --state .state/state.json --site _site
+      - name: Save watcher state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .state
+          key: state-${{ github.run_id }}
+      - name: Build site
+        run: cp index.html app.js core.js style.css sw.js manifest.webmanifest icon.svg icon-180.png icon-512.png _site/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - uses: actions/deploy-pages@v4
