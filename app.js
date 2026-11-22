@@ -92,7 +92,7 @@ function renderHero(nc) {
 }
 
 function renderCertain(list) {
-  const icon = { shock: '🚨', live: '✨', 'live-cloudy': '☁️', soon: '⏳', storm: '⚡', cme: '☀️' };
+  const icon = { cmewatch: '🛰️', shock: '🚨', live: '✨', 'live-cloudy': '☁️', soon: '⏳', storm: '⚡', cme: '☀️' };
   $('#certain').innerHTML = list.map(c => `<div class="banner ${c.level}" data-icon="${icon[c.level] || '✨'}"><h3>${esc(c.title)}</h3><p>${esc(c.text)}</p></div>`).join('');
 }
 
@@ -187,9 +187,9 @@ function renderOutlook(o) {
 
 function renderStorms(data, an) {
   const out = [];
-  for (const c of data.cmes || []) {
-    out.push(`<div class="storm"><div class="t"><span class="tag c">CME</span>Osuma ${C.dayLabel(c.arrival)} klo ${C.hhmm(c.arrival)} ±7 h</div>
-      <div class="m">${c.glancing ? 'Sivuosuma' : 'Suora osuma'}${c.kpHigh != null ? ` · Kp-malli ${c.kpLow === c.kpHigh ? c.kpHigh : c.kpLow + '–' + c.kpHigh}` : ''}${c.speed ? ` · ${c.speed} km/s` : ''}${c.launched ? ` · purkautui ${C.dayLabel(c.launched)}` : ''}</div></div>`);
+  for (const c of (data.cmes || []).filter(c => C.cmeWindow(c).to > Date.now())) {
+    out.push(`<div class="storm"><div class="t"><span class="tag c">CME</span>Osuma ${C.dayLabel(c.arrival)} n. klo ${C.hhmm(c.arrival)}</div>
+      <div class="m">${c.glancing ? 'Sivuosuma' : 'Suora osuma'}${c.kpHigh != null ? ` · Kp-malli ${c.kpLow === c.kpHigh ? c.kpHigh : c.kpLow + '–' + c.kpHigh}` : ''}${c.speed ? ` · ${c.speed} km/s` : ''}${c.launched ? ` · purkautui ${C.dayLabel(c.launched)}` : ''}<br>Ikkuna ${C.dayLabel(C.cmeWindow(c).from)} ${C.hhmm(C.cmeWindow(c).from)} – ${C.dayLabel(C.cmeWindow(c).to)} ${C.hhmm(C.cmeWindow(c).to)}${c === an.nc.cme ? ' · <b style="color:#3be3ff">ikkuna auki – L1-valvonta päällä</b>' : ''}</div></div>`);
   }
   const seen = new Set();
   for (const a of (data.alerts || []).filter(a => a.kind !== 'SUMMARY' && (Date.now() - a.t < 48 * 3600e3 || (a.until && a.until > Date.now()) || a.days.some(d => d.date.getTime() + 864e5 > Date.now())))) {

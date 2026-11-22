@@ -454,7 +454,13 @@ export function nowcast(data, now = new Date()) {
 
   // L1 (1.5 million km sunward): solar wind measured there reaches Earth after ~1.5e6/v seconds.
   const leadMin = speed ? Math.round(1.5e6 / speed / 60) : null;
-  const shock = detectShock(wind?.wind, now);
+  const cme = activeCme(data.cmes, now);
+  // Inside a predicted CME window we use a more sensitive detector (slow glancing CMEs barely jump in speed).
+  const shock = detectShock(wind?.wind, now) || (cme ? detectCmeEdge(wind, now) : null);
+  const strongSouthMinutes = (() => {
+    if (!wind?.mag?.length) return 0;
+    let n = 0; for (let i = wind.mag.length - 1; i >= 0 && wind.mag[i].bz <= -5; i--) n++; return n;
+  })();
 
   const ov = data.ovation;
   const ovAct = ov ? clamp(ov.north / 45) : null;
@@ -479,7 +485,7 @@ export function nowcast(data, now = new Date()) {
   const score = Math.round(100 * visible * (0.75 + 0.25 * mf));
   return {
     t: now, kpNow, source, fmi: fmiFresh ? fmi : null, magNT, magStation: muo?.name, magFresh: !!fresh, range15: muo?.range15 ?? null,
-    bz, bzNow, speed, density, southMinutes, leadMin, shock, coupling, loading,
+    bz, bzNow, speed, density, southMinutes, strongSouthMinutes, leadMin, shock, cme, coupling, loading,
     ovHere: ov?.here ?? null, ovNorth: ov?.north ?? null,
     act, soon, clear: cl, dark, sunAlt: sun.alt, moonAlt: moon.alt, moonAz: moon.az, moonFrac: mi.fraction, moonPhase: mi.phase, mf,
     score, label: scoreLabel(score, dark),
@@ -509,6 +515,41 @@ export function detectShock(wind, now = new Date()) {
     }
   }
   return null;
+}
+
+/** Uncertainty window of a modelled CME arrival: glancing blows are fuzzier. */
+export function cmeWindow(c) {
+  const half = (c.glancing ? 12 : 8) * 3600e3;
+  return { from: new Date(c.arrival.getTime() - half), to: new Date(c.arrival.getTime() + half) };
+}
+export function activeCme(cmes, now = new Date()) {
+  return (cmes || []).find(c => { const w = cmeWindow(c); return now >= w.from && now <= w.to; }) || null;
+}
+
+/**
+ * Sensitive CME-edge detector for use inside a predicted arrival window: last 10 min vs the
+ * 30–90 min baseline — density ×2 (≥ 6 /cm³), total field ×1.7 (≥ 8 nT) or speed +40 km/s.
+ */
+export function detectCmeEdge(wind, now = new Date()) {
+  const avg = (arr, k) => arr.reduce((s, p) => s + p[k], 0) / arr.length;
+  const win = (arr, a, b) => (arr || []).filter(p => now - p.t >= a * 60e3 && now - p.t < b * 60e3);
+  const w1 = win(wind?.wind, 0, 10), w0 = win(wind?.wind, 30, 90);
+  const m1 = win(wind?.mag, 0, 10), m0 = win(wind?.mag, 30, 90);
+  const reasons = [];
+  let v1 = null, n0, n1, b0, b1, v0;
+  if (w1.length >= 3 && w0.length >= 10) {
+    v0 = avg(w0, 'v'); v1 = avg(w1, 'v'); n0 = avg(w0, 'n'); n1 = avg(w1, 'n');
+    if (n1 >= 2 * n0 && n1 >= 6) reasons.push(`tiheys ${n0.toFixed(1)}→${n1.toFixed(1)} /cm³`);
+    if (v1 - v0 >= 40) reasons.push(`nopeus ${Math.round(v0)}→${Math.round(v1)} km/s`);
+  }
+  if (m1.length >= 3 && m0.length >= 10) {
+    b0 = avg(m0, 'bt'); b1 = avg(m1, 'bt');
+    if (b1 >= 1.7 * b0 && b1 >= 8) reasons.push(`magneettikenttä ${b0.toFixed(1)}→${b1.toFixed(1)} nT`);
+  }
+  if (!reasons.length) return null;
+  const v = v1 || 400;
+  const t = new Date(now.getTime() - 10 * 60e3);
+  return { t, edge: true, reasons, v1: Math.round(v), arrival: new Date(t.getTime() + 1.5e6 / v * 1000) };
 }
 
 export function scoreLabel(score, dark = 1) {
@@ -626,10 +667,26 @@ export function certainty(data, nc, nightsList, now = new Date()) {
   }
   if (nc.shock) {
     const mins = Math.round((nc.shock.arrival - now) / 60e3);
+    const jump = nc.shock.edge ? nc.shock.reasons.join(', ') : `nopeus ${nc.shock.v0}→${nc.shock.v1} km/s, tiheys ${nc.shock.n0}→${nc.shock.n1} /cm³`;
     out.push({
-      level: 'shock', id: 'shock:' + nc.shock.t.toISOString(),
-      title: mins > 0 ? `Aurinkomyrskyn shokki L1:llä – osuu Maahan ~${mins} min päästä` : 'Aurinkomyrskyn shokki osui juuri Maahan',
-      text: `SOLAR-1-satelliitti L1-pisteessä mittasi äkillisen hypyn: nopeus ${nc.shock.v0}→${nc.shock.v1} km/s, tiheys ${nc.shock.n0}→${nc.shock.n1} /cm³ (klo ${hhmm(nc.shock.t)}). Arvioitu osuma klo ${hhmm(nc.shock.arrival)}. Jos Bz kääntyy etelään, revontulet voivat räjähtää koko taivaalle.`,
+      level: 'shock', id: 'shock:' + (nc.cme?.id || nc.shock.t.toISOString().slice(0, 13)),
+      title: mins > 0 ? `${nc.shock.edge ? 'CME:n reuna' : 'Aurinkomyrskyn shokki'} saapui L1:lle – osuu Maahan ~${mins} min päästä` : `${nc.shock.edge ? 'CME:n reuna' : 'Aurinkomyrskyn shokki'} osui juuri Maahan`,
+      text: `SOLAR-1-satelliitti L1-pisteessä mittasi hypyn: ${jump} (klo ${hhmm(nc.shock.t)}). Arvioitu osuma klo ${hhmm(nc.shock.arrival)}, revontulet näkyvät tyypillisesti 30–60 min kuluttua. Ratkaisevaa on Bz: jos se kääntyy etelään (negatiiviseksi), revontulet voivat räjähtää koko taivaalle.`,
+    });
+  }
+  if (nc.cme && !nc.shock) {
+    const w = cmeWindow(nc.cme);
+    out.push({
+      level: 'cmewatch', id: 'cmewatch:' + nc.cme.id,
+      title: `CME voi saapua milloin tahansa – ikkuna ${dayLabel(w.from)} ${hhmm(w.from)} – ${dayLabel(w.to)} ${hhmm(w.to)}`,
+      text: `${nc.cme.glancing ? 'Hidas sivuosuma' : 'Osuma'}${nc.cme.speed ? ` (~${nc.cme.speed} km/s)` : ''}: NASA:n malli ${hhmm(nc.cme.arrival)}, mutta tällaisen saapumisaika on hyvin epävarma – se voi myös ohittaa Maan. Tulikettu vahtii L1-satelliittia 10 min välein ja ilmoittaa heti, kun tiheys hyppää tai Bz kääntyy etelään (silloin 30–60 min aikaa).`,
+    });
+  }
+  if (nc.cme && nc.strongSouthMinutes >= 10 && nc.dark > 0.3 && !out.some(o => o.level === 'soon')) {
+    out.push({
+      level: 'soon', id: 'cmesouth',
+      title: 'Bz kääntyi etelään CME-ikkunassa',
+      text: `Aurinkotuulen Bz on ollut ${nc.strongSouthMinutes} min alle −5 nT (nyt ${nc.bzNow?.toFixed(1)} nT). Energiaa virtaa magnetosfääriin – revontulia todennäköisesti 30–60 min sisällä.`,
     });
   }
   const tonight = nightsList[0];
@@ -639,10 +696,10 @@ export function certainty(data, nc, nightsList, now = new Date()) {
     if (day) out.push({ level: 'storm', title: `Geomagneettinen myrsky ${day.level} ennustettu`, text: `NOAA:n ennakkovaroitus ${dayLabel(day.date)} (UTC). Myrskyn aikana revontulet ovat Ylläksellä käytännössä varmat, jos taivas on selkeä – usein koko taivaan värikkäinä koronoina.` });
   }
   for (const c of data.cmes || []) {
-    if (c.arrival < now - 12 * 3600e3) continue;
+    if (cmeWindow(c).to < now || c === nc.cme) continue;
     out.push({
       level: 'cme', title: `Koronan massapurkaus osuu Maahan ${dayLabel(c.arrival)} n. klo ${hhmm(c.arrival)}`,
-      text: `NASA:n WSA-Enlil-malli: ${c.glancing ? 'sivuosuma' : 'suora osuma'}${c.kpHigh != null ? `, Kp-ennuste ${c.kpLow === c.kpHigh ? c.kpHigh : c.kpLow + '–' + c.kpHigh}` : ''}. Saapumisaika on tyypillisesti ±7 h tarkka.`,
+      text: `NASA:n WSA-Enlil-malli: ${c.glancing ? 'sivuosuma' : 'suora osuma'}${c.kpHigh != null ? `, Kp-ennuste ${c.kpLow === c.kpHigh ? c.kpHigh : c.kpLow + '–' + c.kpHigh}` : ''}. Saapumisikkuna ${hhmm(cmeWindow(c).from)}–${hhmm(cmeWindow(c).to)} (${c.glancing ? '±12 h, sivuosuma' : '±8 h'}).`,
     });
   }
   if (tonight && tonight.maxKp >= 5 && (tonight.meanClear ?? 0) >= 0.5) {

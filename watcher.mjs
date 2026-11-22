@@ -118,7 +118,7 @@ async function main() {
 
   // 2) Substorm likely soon (solar wind loading)
   const soon = certain.find(c => c.level === 'soon');
-  if (soon && !live && (nc.clear ?? 0) >= 0.4 && since('soon') > 2 * HOUR) {
+  if (soon && !live && (nc.clear ?? 0) >= 0.4 && since('soon') > (soon.id === 'cmesouth' ? HOUR : 2 * HOUR)) {
     msgs.push({ key: 'soon', priority: 4, tags: ['fox_face', 'hourglass'], title: '🦊 ' + soon.title, message: soon.text });
   }
 
@@ -127,6 +127,13 @@ async function main() {
   if (shock && !state.seen[shock.id]) {
     state.seen[shock.id] = +now;
     msgs.push({ key: null, priority: 5, tags: ['sun_with_face', 'rotating_light'], title: '☀️ ' + shock.title, message: shock.text });
+  }
+
+  // 2c) CME arrival window open → tell once that L1 is being watched
+  const cw = certain.find(c => c.level === 'cmewatch');
+  if (cw && !state.seen[cw.id]) {
+    state.seen[cw.id] = +now;
+    msgs.push({ key: null, priority: 3, tags: ['satellite', 'eyes'], title: '🛰️ ' + cw.title, message: cw.text });
   }
 
   // 3) Good conditions by forecast even without live confirmation
@@ -156,7 +163,7 @@ async function main() {
     msgs.push({
       key: null, priority: 4, tags: ['sun_with_face', 'rocket'],
       title: `☀️ Aurinkomyrsky matkalla: osuma ${C.dayLabel(c.arrival)} n. klo ${C.hhmm(c.arrival)}`,
-      message: `${c.glancing ? 'Sivuosuma' : 'Suora osuma'}${c.kpHigh != null ? `, NASA:n mallin Kp ${c.kpLow === c.kpHigh ? c.kpHigh : c.kpLow + '–' + c.kpHigh}` : ''}${c.speed ? `, nopeus ${c.speed} km/s` : ''}. Saapumisaika ±7 h.`,
+      message: `${c.glancing ? 'Sivuosuma' : 'Suora osuma'}${c.kpHigh != null ? `, NASA:n mallin Kp ${c.kpLow === c.kpHigh ? c.kpHigh : c.kpLow + '–' + c.kpHigh}` : ''}${c.speed ? `, nopeus ${c.speed} km/s` : ''}. Saapumisikkuna ${C.hhmm(C.cmeWindow(c).from)}–${C.hhmm(C.cmeWindow(c).to)} – tarkka hetki selviää vasta L1-satelliitilta ~30–60 min ennen.`,
     });
   }
 
@@ -166,7 +173,7 @@ async function main() {
     state.daily = today;
     const n = nights.find(x => now < x.darkEnd) || nights[0];
     const next = nights.filter(x => x !== n && x.date > n.date).slice(0, 2);
-    const extra = certain.filter(c => ['storm', 'cme'].includes(c.level)).map(c => '⚡ ' + c.title).join('\n');
+    const extra = certain.filter(c => ['storm', 'cme', 'cmewatch'].includes(c.level)).map(c => '⚡ ' + c.title).join('\n');
     msgs.push({
       key: null, priority: n.chance >= 75 && (n.meanClear ?? 0) > 0.5 ? 4 : 3, tags: ['fox_face', 'crescent_moon'],
       title: `🦊 Tämä yö: ${n.chance} % · paras ${C.hhmm(n.from)}–${C.hhmm(n.to)}`,

@@ -29,6 +29,9 @@ Nimi tulee kansantarusta: tulikettu juoksee tuntureilla ja lakaisee hännällä�
 | Bz etelään ≥15 min ja voimakas kytkentä | "Purkaus todennäköinen pian" |
 | Indeksi ≥50 | "Hyvä hetki katsoa taivaalle" |
 | Uusi NOAA:n myrskyvaroitus / CME-osuma | Kerran per varoitus |
+| CME:n saapumisikkuna aukeaa | "L1-valvonta päällä" (kerran) |
+| Ikkunassa: L1-tiheys ×2, kenttä ×1,7 tai nopeus +40 km/s | "CME:n reuna saapui – osuu ~N min päästä" (kiireellinen) |
+| Ikkunassa: Bz ≤ −5 nT 10 min | "Bz kääntyi etelään" |
 | Klo 15 joka päivä | Yön katsaus: paras ikkuna, %, pilvet, kuu |
 
 ## Käyttö paikallisesti

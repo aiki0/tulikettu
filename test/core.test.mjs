@@ -65,3 +65,20 @@ test('detects a CME shock at L1 and estimates Earth arrival', () => {
   assert.ok(mins > 35 && mins < 45, `lead ${mins}`);
   assert.equal(C.detectShock(wind.map(p => ({ ...p, v: 380, n: 4 })), now), null);
 });
+
+test('CME window opens watch mode and a slow glancing edge is detected', () => {
+  const now = new Date('2026-11-23T03:00:00Z');
+  const cme = { id: 'X', arrival: new Date('2026-11-23T00:00:00Z'), glancing: true, speed: 364 };
+  assert.equal(C.activeCme([cme], now), cme);
+  const mk = (edge) => ({
+    wind: Array.from({ length: 100 }, (_, i) => ({ t: new Date(now.getTime() - (99 - i) * 60e3), v: 360, n: edge && i > 92 ? 9 : 3 })),
+    mag: Array.from({ length: 100 }, (_, i) => ({ t: new Date(now.getTime() - (99 - i) * 60e3), bz: 1, bt: 4 })),
+  });
+  assert.equal(C.detectCmeEdge(mk(false), now), null);
+  const e = C.detectCmeEdge(mk(true), now);
+  assert.ok(e && e.reasons[0].startsWith('tiheys'));
+  const a = C.analyse({ wind: mk(false), cmes: [cme], kp: [], alerts: [] }, now);
+  assert.ok(a.certain.some(c => c.level === 'cmewatch'));
+  const b = C.analyse({ wind: mk(true), cmes: [cme], kp: [], alerts: [] }, now);
+  assert.ok(b.certain.some(c => c.level === 'shock' && /CME:n reuna/.test(c.title)));
+});
