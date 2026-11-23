@@ -4,3 +4,5 @@ fmi.json
 .DS_Store
 worker/.wrangler/
 node_modules/
+.omc/
+**/.omc/
