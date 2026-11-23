@@ -37,6 +37,13 @@ Nimi tulee kansantarusta: tulikettu juoksee tuntureilla ja lakaisee hännällä�
 | Ikkunassa: Bz ≤ −5 nT 10 min | "Bz kääntyi etelään" |
 | Klo 15 joka päivä | Yön katsaus: paras ikkuna, %, pilvet, kuu |
 
+## Avaimet
+Avaimet ovat tiedostossa `.env` (ei gitissä, ks. `.env.example`). Workerin päivitys:
+```sh
+set -a; source .env; set +a
+cd worker && npx wrangler deploy
+```
+
 ## Käyttö paikallisesti
 ```sh
 node --test test/
