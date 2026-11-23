@@ -329,7 +329,7 @@ async function load() {
   S.loading = true;
   $('#refresh').innerHTML = `<span id="updated">${$('#updated')?.textContent || ''}</span> <span class="spin">⟳</span>`;
   try {
-    const data = await C.fetchAll(cachedFetch, { fmiSnapshot: './fmi.json' });
+    const data = await C.fetchAll(cachedFetch, { fmiSnapshot: ['https://tulikettu.veeti-aikio.workers.dev/fmi.json', './fmi.json'] });
     if (data.fmi && !Object.keys(data.fmi).length) data.fmi = null;
     S.data = data; S.an = C.analyse(data);
     render();

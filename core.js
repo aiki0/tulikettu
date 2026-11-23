@@ -168,10 +168,29 @@ export async function fetchKpNow(f) {
   return { t: new Date(last.time_tag + 'Z'), kp: +last.estimated_kp };
 }
 
-export async function fetchSolarWind(f) {
+/**
+ * Newest-first JSON array, optionally fetched partially with an HTTP Range request (the full files are
+ * 2–3 MB; servers like Cloudflare Workers can't afford to parse that every minute). The truncated
+ * tail is cut back to the last complete object.
+ */
+async function getNewestJSON(url, f, bytes) {
+  if (!bytes) return getJSON(url, f);
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), UA_FETCH_TIMEOUT);
+  try {
+    const r = await f(url, { signal: ctrl.signal, headers: { Range: `bytes=0-${bytes}`, 'Accept-Encoding': 'identity' } });
+    if (!r.ok) throw new Error(`${r.status} ${url}`);
+    const txt = await r.text();
+    if (r.status !== 206) return JSON.parse(txt);
+    const cut = txt.lastIndexOf('}, {');
+    return JSON.parse(txt.slice(0, cut + 1) + ']');
+  } finally { clearTimeout(t); }
+}
+
+export async function fetchSolarWind(f, { partial = false } = {}) {
   const [mag, wind] = await Promise.all([
-    getJSON(`${NOAA}/json/rtsw/rtsw_mag_1m.json`, f),
-    getJSON(`${NOAA}/json/rtsw/rtsw_wind_1m.json`, f),
+    getNewestJSON(`${NOAA}/json/rtsw/rtsw_mag_1m.json`, f, partial && 200000),
+    getNewestJSON(`${NOAA}/json/rtsw/rtsw_wind_1m.json`, f, partial && 260000),
   ]);
   const since = Date.now() - 3 * 3600e3;
   const m = mag.filter(x => x.active && x.bz_gsm != null)
@@ -315,7 +334,14 @@ export const FMI_R_URL = 'https://space.fmi.fi/MIRACLE/RWC/data/r_index_latest_e
 export const FMI_RX_URL = 'https://space.fmi.fi/MIRACLE/RWC/data/RX_latest_en.json';
 export async function fetchFmiR(f, snapshotUrl) {
   let r, rx;
-  if (snapshotUrl) ({ r, rx } = await getJSON(snapshotUrl + '?' + Math.floor(Date.now() / 60000), f));
+  if (snapshotUrl) {
+    // one or more snapshot URLs, tried in order (Cloudflare Worker first, GitHub Pages fallback)
+    let lastErr;
+    for (const u of [].concat(snapshotUrl)) {
+      try { ({ r, rx } = await getJSON(u + '?' + Math.floor(Date.now() / 60000), f)); if (r) break; } catch (e) { lastErr = e; }
+    }
+    if (!r) throw lastErr || new Error('no FMI snapshot');
+  }
   else [r, rx] = await Promise.all([getJSON(FMI_R_URL, f), getJSON(FMI_RX_URL, f).catch(() => null)]);
   const out = {};
   for (const [code, v] of Object.entries(r?.data || {})) {
@@ -360,10 +386,10 @@ export async function fetchClouds(f) {
 }
 
 /** Fetch everything; individual failures become null so the app degrades gracefully. */
-export async function fetchAll(f = fetch, { nasaKey, fmiSnapshot, skip = [] } = {}) {
+export async function fetchAll(f = fetch, { nasaKey, fmiSnapshot, skip = [], partialWind = false } = {}) {
   const jobs = {
     fmi: () => fetchFmiR(f, fmiSnapshot),
-    kp: () => fetchKpForecast(f), kpNow: () => fetchKpNow(f), wind: () => fetchSolarWind(f), ovation: () => fetchOvation(f),
+    kp: () => fetchKpForecast(f), kpNow: () => fetchKpNow(f), wind: () => fetchSolarWind(f, { partial: partialWind }), ovation: () => fetchOvation(f),
     alerts: () => fetchAlerts(f), outlook: () => fetch27Day(f), cmes: () => fetchCMEs(f, nasaKey), mag: () => fetchMagnetometer(f),
     clouds: () => fetchClouds(f),
   };
@@ -419,18 +445,32 @@ export function clearness(c) {
   return clamp(1 - c.total / 100);
 }
 
+// Hot paths (run ~100× per analysis): index series by time once, then binary search.
+const tIndex = new WeakMap();
+function times(series) {
+  let ts = tIndex.get(series);
+  if (!ts) { ts = Float64Array.from(series, r => r.t.getTime()); tIndex.set(series, ts); }
+  return ts;
+}
+/** Index of the last element with t <= x (−1 if none); series sorted by t. */
+function floorIdx(ts, x) {
+  let lo = 0, hi = ts.length - 1, ans = -1;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (ts[m] <= x) { ans = m; lo = m + 1; } else hi = m - 1; }
+  return ans;
+}
+
 function kpAt(kp, t) {
   if (!kp?.length) return 2;
-  let best = kp[0];
-  for (const r of kp) if (r.t <= t) best = r;
-  return best.kp;
+  const i = floorIdx(times(kp), +t);
+  return kp[Math.max(0, i)].kp;
 }
 
 function cloudAt(series, t) {
   if (!series?.length) return null;
-  let best = null, bd = Infinity;
-  for (const r of series) { const d = Math.abs(r.t - t); if (d < bd) { bd = d; best = r; } }
-  return bd <= 90 * 60e3 ? best : null;
+  const ts = times(series), x = +t, i = floorIdx(ts, x);
+  let best = -1, bd = Infinity;
+  for (const j of [i, i + 1]) if (j >= 0 && j < ts.length && Math.abs(ts[j] - x) < bd) { bd = Math.abs(ts[j] - x); best = j; }
+  return bd <= 90 * 60e3 ? series[best] : null;
 }
 
 /** Real-time picture: what's happening right now and in the next ~hour. */
@@ -498,20 +538,20 @@ export function nowcast(data, now = new Date()) {
  */
 export function detectShock(wind, now = new Date()) {
   if (!wind?.length) return null;
-  const recent = wind.filter(p => now - p.t < 90 * 60e3);
-  for (let i = recent.length - 1; i >= 0; i--) {
-    const p = recent[i];
-    const before = wind.filter(q => p.t - q.t >= 8 * 60e3 && p.t - q.t <= 20 * 60e3);
-    if (before.length < 3) continue;
-    const v0 = before.reduce((s, q) => s + q.v, 0) / before.length;
-    const n0 = before.reduce((s, q) => s + q.n, 0) / before.length;
-    const after = recent.filter(q => q.t >= p.t && q.t - p.t <= 5 * 60e3);
-    if (after.length < 2) continue;
-    const v1 = after.reduce((s, q) => s + q.v, 0) / after.length;
-    const n1 = after.reduce((s, q) => s + q.n, 0) / after.length;
+  const nowMs = +now;
+  const pts = wind.filter(p => nowMs - p.t < 115 * 60e3).map(p => ({ t: +p.t, v: p.v, n: p.n }));
+  const mean = (a, k) => a.reduce((s, q) => s + q[k], 0) / a.length;
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i];
+    if (nowMs - p.t >= 90 * 60e3) break;
+    const before = [], after = [];
+    for (let j = i; j >= 0 && p.t - pts[j].t <= 20 * 60e3; j--) if (p.t - pts[j].t >= 8 * 60e3) before.push(pts[j]);
+    for (let j = i; j < pts.length && pts[j].t - p.t <= 5 * 60e3; j++) after.push(pts[j]);
+    if (before.length < 3 || after.length < 2) continue;
+    const v0 = mean(before, 'v'), n0 = mean(before, 'n'), v1 = mean(after, 'v'), n1 = mean(after, 'n');
     if (v1 - v0 >= 60 && (n1 >= 1.8 * n0 || n1 >= 15)) {
-      const arrival = new Date(p.t.getTime() + 1.5e6 / v1 * 1000);
-      return { t: p.t, v0: Math.round(v0), v1: Math.round(v1), n0: +n0.toFixed(1), n1: +n1.toFixed(1), arrival };
+      const t = new Date(p.t);
+      return { t, v0: Math.round(v0), v1: Math.round(v1), n0: +n0.toFixed(1), n1: +n1.toFixed(1), arrival: new Date(p.t + 1.5e6 / v1 * 1000) };
     }
   }
   return null;

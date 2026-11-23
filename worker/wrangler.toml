@@ -1,0 +1,14 @@
+name = "tulikettu"
+main = "index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[triggers]
+crons = ["* * * * *"]
+
+[[kv_namespaces]]
+binding = "KV"
+id = "cbf8e429e60842a681a7564a899d4246"
+
+[observability]
+enabled = true

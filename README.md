@@ -9,7 +9,10 @@ Nimi tulee kansantarusta: tulikettu juoksee tuntureilla ja lakaisee hännällä�
 - `core.js` – kaikki logiikka (datan haku, Aurinko/Kuu, pisteytys, yön parhaat ikkunat, varmuussignaalit). Toimii selaimessa ja Nodessa.
 - `index.html`, `app.js`, `style.css` – verkkosovellus (PWA, lisää Koti-valikkoon).
 - `watcher.mjs` – taustavahti: ilmoitukset ntfy:hin + `fmi.json`-tilannekuva Ilmatieteen laitoksen R-indeksistä (FMI ei salli CORSia).
-- `.github/workflows/watch.yml` – ajaa vahdin 10 min välein ja julkaisee sivun GitHub Pagesiin.
+- `notify.js` – ilmoituspäätökset ja ntfy-lähetys (yhteinen GitHubille ja Workerille).
+- `worker/` – Cloudflare Worker: vahti **joka minuutti** + `/fmi.json` (FMI CORS-proxy) + `/health`. Deploy: `cd worker && npx wrangler deploy`. Secrets: `NTFY_TOPIC`, `APP_URL`, `NTFY_TOKEN`.
+- `.github/workflows/watch.yml` – 10 min välein: julkaisee sivun Pagesiin ja on varavahti (lähettää vain jos Worker ei ole ajanut 8 min sisällä tai ei pysty lähettämään).
+- `simulate.mjs` – simuloi myrskyillan ilmoitukset.
 
 ## Datalähteet
 | Mitä | Lähde |

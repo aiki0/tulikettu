@@ -40,6 +40,7 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           NASA_KEY: ${{ secrets.NASA_KEY }}
           APP_URL: ${{ secrets.APP_URL }}
+          WORKER_URL: https://tulikettu.veeti-aikio.workers.dev
         run: |
           mkdir -p _site
           node watcher.mjs --state .state/state.json --site _site
