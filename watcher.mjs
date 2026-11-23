@@ -9,7 +9,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import * as C from './core.js';
-import { decide, runCycle } from './notify.js';
+import { decide, runCycle, pushNtfy } from './notify.js';
 export { decide };
 
 const args = process.argv.slice(2);
@@ -36,11 +36,8 @@ async function saveState(s) {
 }
 
 async function push(msg) {
-  const body = { topic: TOPIC, title: msg.title, message: msg.message, priority: msg.priority ?? 3, tags: msg.tags ?? [] };
-  if (APP_URL) body.click = APP_URL;
-  if (DRY || !TOPIC) { console.log('\n── PUSH (dry) ──\n' + JSON.stringify(body, null, 1)); return; }
-  const r = await fetch(SERVER, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
-  if (!r.ok) throw new Error(`ntfy ${r.status}: ${await r.text()}`);
+  if (DRY || !TOPIC) { console.log('\n── PUSH (dry) ──\n' + JSON.stringify(msg, null, 1)); return; }
+  await pushNtfy(msg, { topic: TOPIC, server: SERVER, appUrl: APP_URL, token: process.env.NTFY_TOKEN || '' });
   console.log('pushed:', msg.title);
 }
 

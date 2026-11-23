@@ -38,6 +38,7 @@ jobs:
       - name: Watch
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
           NASA_KEY: ${{ secrets.NASA_KEY }}
           APP_URL: ${{ secrets.APP_URL }}
           WORKER_URL: https://tulikettu.veeti-aikio.workers.dev

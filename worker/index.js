@@ -17,8 +17,18 @@ async function cycle(env) {
   const { data, msgs } = await runCycle({ state, now, nasaKey: env.NASA_KEY || 'DEMO_KEY', light: true, log: false });
   const sent = [];
   const hbPrev = await env.KV.get('health', 'json');
-  let pushOk = env.NTFY_TOKEN ? (hbPrev?.pushOk ?? true) : false;
+  let pushOk = false;
   if (env.NTFY_TOKEN) {
+    pushOk = hbPrev?.pushOk === true;
+    if (!pushOk) { // (re)verify the account token cheaply instead of assuming
+      const r = await fetch('https://ntfy.sh/v1/account', { headers: { Authorization: `Bearer ${env.NTFY_TOKEN}` } }).catch(() => null);
+      pushOk = !!r?.ok;
+    }
+    if (pushOk && !state.seen?.cfHello) {
+      msgs.unshift({ priority: 2, tags: ['fox_face', 'white_check_mark'], title: '🦊 Tulikettu-vahti päällä',
+        message: 'Cloudflare tarkistaa nyt revontulitilanteen joka minuutti. Ilmoitukset tulevat 1–2 min sisällä siitä, kun Ilmatieteen laitoksen tai L1-satelliitin data muuttuu.' });
+      state.seen.cfHello = +now;
+    }
     for (const m of msgs) {
       try { await pushNtfy(m, { topic: env.NTFY_TOPIC, appUrl: env.APP_URL, token: env.NTFY_TOKEN }); sent.push(m.title); pushOk = true; }
       catch (e) { console.error('push failed', e.message); pushOk = false; }
